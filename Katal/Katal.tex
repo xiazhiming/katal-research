@@ -272,7 +272,7 @@ Connecting to Polkadot enables Katal to not only exchange information with other
 The Katal technology stack is illustrated in Figure \ref{fig:stack}.
 
 \begin{figure}[h]
-	\includegraphics[width=\linewidth]{images/KTS_stack.jpg}
+	\includegraphics[width=\linewidth]{images/XTL_stack.jpg}
 	\caption{Katal technology stack}
 	\label{fig:stack}
 \end{figure}
@@ -295,7 +295,7 @@ For a full description of the Katal runtime it is enough to outline all the kern
 	\item \textbf{Authentication object:} It maintains a list of the IDs of all user objects and their corresponding authentication methods. The dock object calls this object to verify the signatures on transactions. Other objects may also call it when they need authentication services.
 	\item \textbf{Schedule object:} It enables periodic, or scheduled, calls to other objects. Every block it receives from the dock object the current time and block number and then proceeds by calling any objects that are scheduled to be called at that particular time.
 	\item \textbf{Instantiation object:} It creates all user objects. Users can call it to create a new user object from a list of object templates. It maintains the list of object templates and defines which parameters are allowed for the instantiation of those templates.
-	\item \textbf{Native issuance object:} It is a special instance of the more general \textit{issuance template}. It manages the native token (\textit{KTS}) by maintaining a list of all object IDs and their corresponding balance. It also deals with transferring, minting and burning \textit{KTS} tokens.
+	\item \textbf{Native issuance object:} It is a special instance of the more general \textit{issuance template}. It manages the native token (\textit{XTL}) by maintaining a list of all object IDs and their corresponding balance. It also deals with transferring, minting and burning \textit{XTL} tokens.
 	\item \textbf{Governance object:} It implements whichever governance method is chosen to update the blockchain. Notably, it is the only object that possesses unrestricted access to the \textit{super object}, thus allowing it to modify any part of the Katal runtime.
 	\item \textbf{Consensus object:} It manages certain tasks related to the consensus algorithm. Namely, it maintains a list of validators and their staking deposits, applies slash inherents, distributes block rewards, etc.
 \end{itemize}
@@ -351,9 +351,9 @@ In this section we will detail the runtime of Katal, beginning by giving some ge
 \subsection{General}
 
 \subsubsection{Reserved namespace}
-There is a reserved \textit{namespace} for the kernel objects. The namespace consists of all the IDs that begin with \textit{'KTS'}. For example, the dock object will have the name \textit{'KTS\_Dock'}.
+There is a reserved \textit{namespace} for the kernel objects. The namespace consists of all the IDs that begin with \textit{'XTL'}. For example, the dock object will have the name \textit{'XTL\_Dock'}.
 
-User objects are not allowed to have an ID that begins with \textit{'KTS'}. This is enforced by the instantiation object, who will not accept any requests to create an user object with an ID in that namespace.
+User objects are not allowed to have an ID that begins with \textit{'XTL'}. This is enforced by the instantiation object, who will not accept any requests to create an user object with an ID in that namespace.
 
 \subsubsection{Transactions}
 A transaction is a bundle of function calls to objects. Users can join several different function calls into the same transaction and sign them. The function calls are only forwarded by the dock object if all the signatures are valid. A transaction has the following format:
@@ -475,7 +475,7 @@ The interface for the native issuance object is exactly the same as any other is
 However, we can be more specific regarding its specification:
 
 \begin{itemize}
-	\item There is only one \texttt{asset\_ID}, which is the native token \textit{KTS}.
+	\item There is only one \texttt{asset\_ID}, which is the native token \textit{XTL}.
 	\item The \texttt{mint} and \texttt{burn} functions only accept calls from the consensus object.
 \end{itemize}
 
@@ -490,13 +490,13 @@ The consensus object deals with all the tasks related to the validators, specifi
 	\end{tabular}
 \end{center}
 
-The key is just the ID of the account that deposited the stake. The value contains the amount deposited (in \textit{KTS}), the public key used to validate blocks and the status. The status just indicates if the validator is currently active or not.
+The key is just the ID of the account that deposited the stake. The value contains the amount deposited (in \textit{XTL}), the public key used to validate blocks and the status. The status just indicates if the validator is currently active or not.
 
 \begin{itemize}
-	\item \texttt{stake([auth\_ID], ID, amount, validating\_key):} Transfers the given amount of \textit{KTS} to the consensus object. If successful, it adds ID, validating\_key and amount to the validator registry. It accepts calls from any object, but only if ID $\in$ \texttt{\texttt{[auth\_ID]}}.
+	\item \texttt{stake([auth\_ID], ID, amount, validating\_key):} Transfers the given amount of \textit{XTL} to the consensus object. If successful, it adds ID, validating\_key and amount to the validator registry. It accepts calls from any object, but only if ID $\in$ \texttt{\texttt{[auth\_ID]}}.
 	\item \texttt{restake(ID, new\_validating\_key, signature):} Calls the authentication object to check if signature is valid. If it is, it replaces the validating key of ID.
 	\item \texttt{unstake([auth\_ID], ID):} Returns deposit back to ID and removes the corresponding key from validator registry. It accepts calls from any object, but only if ID $\in$ \texttt{[auth\_ID]}.
-	\item \texttt{fee([auth\_ID], ID, amount):} Transfers a given amount of \textit{KTS} to the consensus object. If successful, updates block reward value. It accepts calls from any object, but only if ID $\in$ \texttt{[auth\_ID]}.
+	\item \texttt{fee([auth\_ID], ID, amount):} Transfers a given amount of \textit{XTL} to the consensus object. If successful, updates block reward value. It accepts calls from any object, but only if ID $\in$ \texttt{[auth\_ID]}.
 	\item \texttt{slash(ID):} Divides the deposit amount of the given ID between all other active validators and deletes the corresponding key from the validator registry. Can only be called with an inherent.
 	\item \texttt{reward(ID):} Transfers the block reward to the given ID. Can only be called with an inherent.
 	\item \texttt{change\_validators(seed):} Produces a new list of active validators from the seed and updates the registry accordingly. Can only be called with an inherent.
@@ -559,7 +559,7 @@ Some explanation is needed about the ownership mechanism. In order to support to
 
 Contrary to the tokens of issuance objects, which are just symbolic representations of external assets, contract tokens have a more active role inside Katal. Contract tokens give whoever holds them a share in the future cash flows (positive or negative) generated by the contract.
 
-A cash flow is executed by a contract by directly calling an issuance object or another contract object. For example, imagine that Alice has 0.2 creator tokens, Bob has 0.8 creator tokens and Charlie has 1 counterparty token. If a contract generates a cash flow of 100 \textit{KTS} from the creator to the counterparty, it will call the \textit{KTS} issuance object to transfer 20 \textit{KTS} from Alice to Charlie and 80 \textit{KTS} from Bob to Charlie.
+A cash flow is executed by a contract by directly calling an issuance object or another contract object. For example, imagine that Alice has 0.2 creator tokens, Bob has 0.8 creator tokens and Charlie has 1 counterparty token. If a contract generates a cash flow of 100 \textit{XTL} from the creator to the counterparty, it will call the \textit{XTL} issuance object to transfer 20 \textit{XTL} from Alice to Charlie and 80 \textit{XTL} from Bob to Charlie.
 
 \section{Functionality}
 Developers can build an endless variety of financial services in Katal by combining different ACTUS contracts. In this section we will give a few examples of the financial applications that can be created.
@@ -607,10 +607,10 @@ If Alice and Bob want to exchange two types of tokens, they only need to create 
 
 The foreign exchange contract is \textit{atomic}, meaning that it either completes successfully or it does not happen at all. There is no risk for any of the parties involved.
 
-Given that Katal supports both asset-backed tokens and cryptocurrency tokens (of any blockchain that connects to Polkadot), in addition to its native token \textit{KTS}, the token exchange contract can be used in a variety of interesting situations:
+Given that Katal supports both asset-backed tokens and cryptocurrency tokens (of any blockchain that connects to Polkadot), in addition to its native token \textit{XTL}, the token exchange contract can be used in a variety of interesting situations:
 
 \begin{itemize}
-	\item Fiat-KTS: Buying KTS inside Katal using a fiat-backed token.
+	\item Fiat-XTL: Buying XTL inside Katal using a fiat-backed token.
 	\item Fiat-Stock: Buying and selling stocks using a fiat-backed token, akin to a stock exchange.
 	\item Fiat-Crypto: Buying and selling cryptocurrencies with fiat.
 	\item Crypto-Crypto: Exchanging different cryptocurrencies.
@@ -638,15 +638,15 @@ Margin trading is the act of borrowing money to buy assets and is widely used in
 
 In margin trading borrowers are required to maintain the net value of their position, meaning the difference between the value of the assets and the value of the loan, at a constant value. This value is called the \textit{margin}.
 
-This financial service can also be done in Katal, and is in fact similar to collateralized loans. Imagine Alice wants to buy \textit{KTS} on margin and to do so she will borrow money, in the form of \textit{KTS} tokens, from Bob. Alice will maintain her margin using fiat-backed tokens. They will create two contracts: a collateral contract and a margin contract.
+This financial service can also be done in Katal, and is in fact similar to collateralized loans. Imagine Alice wants to buy \textit{XTL} on margin and to do so she will borrow money, in the form of \textit{XTL} tokens, from Bob. Alice will maintain her margin using fiat-backed tokens. They will create two contracts: a collateral contract and a margin contract.
 
 \includegraphics[width=\linewidth]{images/margin_trading.jpg}
 
-An oracle for the price of \textit{KTS} is also necessary for adjusting the margin amount. With the contracts created, the following cash flows will take place:
+An oracle for the price of \textit{XTL} is also necessary for adjusting the margin amount. With the contracts created, the following cash flows will take place:
 
 \begin{enumerate}
-	\item The borrowed \textit{KTS} is transferred from Bob's account into the collateral contract, and the margin amount is transferred from Alice's account into the margining contract.
-	\item Periodically, the margining contract will query the oracle for the \textit{KTS} price and adjust the amount of margin accordingly, transferring cash in and out of Alice's account to maintain the necessary margin.
+	\item The borrowed \textit{XTL} is transferred from Bob's account into the collateral contract, and the margin amount is transferred from Alice's account into the margining contract.
+	\item Periodically, the margining contract will query the oracle for the \textit{XTL} price and adjust the amount of margin accordingly, transferring cash in and out of Alice's account to maintain the necessary margin.
 	\item When Alice decides to terminate her position, or when she is no longer able to maintain the margin, the collateral and the margin are transferred into Bob's account.
 	\item If, when her position is terminated, Alice has made a profit then part of the collateral will be transferred into her account.
 \end{enumerate}
