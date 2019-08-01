@@ -24,7 +24,7 @@
 	\IEEEauthorblockA{
 		Trinkler Software\\
 		\textit{company@trinkler.software}}
-	\\\\Version 3 -- March 4, 2019
+	\\\\Version 4 -- August 1, 2019
 }
 
 \maketitle
@@ -32,7 +32,7 @@
 \pagestyle{plain} %to have page numbers
 
 \begin{abstract}
-In this paper we introduce Enso, a virtual machine designed to be used as general-purpose state transition function in blockchains. This design allows the blockchain application logic to be coded into the state, instead of into the state transition function, making it much more flexible and easier to modify. A byproduct is reducing the frequency of forks, concerted or not. Finally, we discuss how Enso can easily be implemented as a runtime module on Parity's Substrate.
+In this paper we introduce Enso, a virtual machine designed to be used as general-purpose state transition function in blockchains. This design allows the blockchain application logic to be coded into the state, instead of into the state transition function, making it much more flexible and easier to modify. A byproduct is reducing the frequency of forks, concerted or not.
 \end{abstract}
 
 \section{Introduction}
@@ -60,7 +60,7 @@ Then we have the consensus. This allows all nodes to reach an agreement on what 
 
 Lastly, we have the state and the state transition function (STF). State represents, of course, the current state of the virtual machine. The state, for most users, is the only component that they interact with. The state transition function is the function that takes as input the previous state and a block, and produces a new state as output. So, it is what defines the rules for modifying the state. Contrary to the networking and consensus, these two components no longer interact with, or have any notion of, other nodes. Together they just form a simple virtual machine.
 
-The way in which each of these components is modified, or upgraded, varies from blockchain to blockchain. The following image illustrates how legacy chains, like Bitcoin \cite{nakamoto2008bitcoin} or Ethereum \cite{buterin2014next} \cite{wood2014ethereum}, are modified:
+The way in which each of these components is modified, or upgraded, varies from blockchain to blockchain. The following image illustrates how legacy chains, like Bitcoin \cite{nakamoto2008bitcoin} or Ethereum \cite{buterin2014next}, are modified:
 
 \begin{center}
 	\begin{tabular}{c c c}
@@ -138,118 +138,92 @@ Enso applies the stored-program computer concept to blockchains. It adopts a ver
 
 By treating the logic and the data equally, blockchains can be built with a greater degree of flexibility. And extrinsics allow for simpler and more granular modifications to the application logic. Changes to the consensus or to the virtual machine still need to be done using the module swaps, but we expect that consensus and virtual machine updates will be fairly rare, at least when compared with changes to the application logic.
 
+\section{Actor model}
+The actor model is a mathematical model of computation, especially useful when concurrency is desired, that was first published in 1973 and is inspired in Physics. It treats all computation as the result of \textit{actors} exchanging \textit{messages} between themselves.
+
+An actor is an object with an address, code and storage. They communicate with each other by sending messages. For this, each of them has a \textit{mailbox}, which is basically just a queue for the incoming messages. Upon receiving a message, an actor will run it's code and can alter it's own storage.
+
+An actor is thus capable of the following actions:
+\begin{itemize}
+	\item Pulling messages from its mailbox queue.
+	\item Deciding what to do with a message, including ignoring it.
+	\item Modifying its internal state.
+	\item Sending messages to other actors at addresses that it knows about.
+	\item Creating new actors.
+\end{itemize}
+
+There is no assumed sequence to the above actions and they can be performed in parallel. Messages are asynchronous and thus may arrive in any order.
+
 \section{Specification}
-In this section we will delve into several aspects of the Enso virtual machine. Beginning by formally defining what a blockchain is.
+In this section we will delve into the specification of the Enso virtual machine. Enso is heavily modeled after the actor model, with the main difference being that Enso does not support concurrency, although concurrency could in theory be added.
 
-A blockchain is an ordered series of states produced by the repeated application of a state transition function. Let us denote the state as \textit{S} and a block as \textit{B}, then the state transition function can be defined as:
-\[ STF(B_t, S_t) \to S_{t+1} \]
+Just like in the actor model, in Enso everything is either an actor or a message.
 
-A block in this context is just an input to the state transition function, having no further structure. The consensus is not \textit{explicitly} defined in this framework, but rather \textit{implicitly} because the consensus is necessary to reach an agreement over a set of inputs to the state transition function and its order.
-
-The current state is then defined as the result of applying the state transition function repeatedly using as inputs the \textit{genesis} state $ S_0 $ and the blocks on which a consensus was reached.
-\[ S_n = STF(B_{n-1}, \ldots STF(B_1,STF(B_0,S_0)) \ldots) \]
-
-Now that we defined what a blockchain is, we can discuss what a blockchain that uses Enso looks like. For Enso everything is either an \textit{object} or an \textit{event}.
-
-\subsection{Objects}
-An object is an entity composed of the following components:
+An actor is an entity composed of the following components:
 
 \begin{itemize}
-	\item \textit{ID:} A unique identifier of the object. It can be any string, as long as it is unique.
-	\item \textit{Code:} A block of code containing functions that can be called by other objects.
+	\item \textit{ID:} A unique identifier of the actor.
+	\item \textit{Code:} A block of code containing functions that can be called by other actors.
 	\item \textit{Storage:} A data structure containing arbitrary information and that can be read and modified by the code.
 \end{itemize}
 
-Note that objects, because of their general purpose code and storage, can support any kind of logic. Also, objects are dynamic and can have any part of them modified at any time.
+Using Enso, the state of the blockchain will be simply the set of all actors. So, all of the application logic and data will be coded into the actors.
 
-Using Enso, the state of a blockchain will be simply the set of all objects. So, all of the application logic and data will be coded into the objects.
+Note that actors in Enso do not have a mailbox. That is because, since no concurrency is needed, there is only a single \textit{global message queue} that orders all messages sent by all actors.
 
-\subsection{Events}
-Events, put simply, are \textit{asynchronous} function calls from one object to another. By asynchronous we mean that when an object creates an event, the object will not be blocked while it waits for the event to be processed. Instead it will keep working and accepting other events.
+Messages, put simply, are asynchronous function calls from one actor to another. By asynchronous we mean that when an actor sends a message, the actor will not be blocked while it waits for the message to be processed. Instead it will keep working and accepting other messages. This asynchronicity is necessary because we want the virtual machine to keep running even if a function call fails.
 
-This asynchronicity is necessary because we want the virtual machine to keep running even if a function call fails.
-
-An event \texttt{e} takes the form \texttt{e(priority, ID\_to, function\_call, parameters)}, where:
+A message takes the form \texttt{(ID\_to, function\_call, parameters)}, where:
 
 \begin{itemize}
-	\item \texttt{priority:} The priority of the event, used for the event queue.
-	\item \texttt{ID\_to:} The ID of the object that will receive the event.
+	\item \texttt{ID\_to:} The ID of the actor that will receive the message.
 	\item \texttt{function\_call:} The name of the function that will be called.
 	\item \texttt{parameters:} A list of parameters that will be passed to the function.
 \end{itemize}
 
-Now that we know that the state is composed of objects, and that objects communicate between themselves with events, we can describe the inner workings of the Enso virtual machine. It is composed of three components: the \textit{super object}, the \textit{events queue} and the \textit{input rules}. We will now specify each one of them.
-
-\subsection{Super Object}
-The super object is a special object that has the following properties:
+Now that we know that the state is composed of actors, and that actors communicate between themselves with messages, we can state which actions are available to an actor in Enso:
 
 \begin{itemize}
-	\item It is a unique object, there can only be one super object in the state.
-	\item Its ID and code are static, they cannot be changed or modified in any way.
-	\item It is the only object that can modify other objects.
+	\item Receive messages from the global message queue.
+	\item Processing messages by calling the corresponding internal functions.
+	\item Modifying its own ID, code or storage.
+	\item Send messages to other actors at addresses that it knows about.
+	\item Read storage of other actors at addresses that it knows about.
+	\item Create new actors.
 \end{itemize}
 
-The name \textit{'super object'} is a reference to the \textit{super user} in Linux systems, and is meant to signify that it has complete control over the state.
+Contrary to the actor model, actors in Enso are able to read each others storage. The blockchain state is public and accessible to anyone, so it only makes sense to allow actors to also read the entire state.
 
-The super object code is composed of the following functions:
+The only component of Enso that remains to be described is the global message queue, which is just a simple \textit{first in first out} queue for messages.
+
+When an message is processed, it is taken out of the queue and the function \texttt{function\_call} of the actor \texttt{ID\_to} is called with the input parameters \texttt{parameters}. If, for some reason, the function cannot be called, for example if the actor doesn't exist or there is no function with that name, the message is simply ignored.
+
+\section{Implementation}
+The objective of the last section was to describe the components of the Enso virtual machine and its operation in an abstract form. In this section we want to give some details on how Enso can be implemented in practice.
+
+First, even though both the application data and logic will coexist in the state, in most cases there will be a clear separation between both. By this we mean that, when developing a new blockchain with Enso, it is useful to divide the actors into two categories:
 
 \begin{itemize}
-	\item \texttt{Create(ID, code, storage):} Creates a new object with the given ID, code and storage.
-	\item \texttt{Delete(ID):} Deletes object with the given ID.
-	\item \texttt{Check(ID):} Checks if any object exists with the given ID and returns the answer.
-	\item \texttt{Request\_object(ID):} Returns the code and storage of the object with the given ID.
-	\item \texttt{Change\_ID(ID, new\_ID):} Changes the ID of the object with the given ID to \texttt{new\_ID}.
-	\item \texttt{Change\_code(ID, new\_code):} Changes the code of the object with the given ID to \texttt{new\_code}.
-	\item \texttt{Change\_storage(ID, new\_storage):} Changes the storage of the object with the given ID to \texttt{new\_storage}.
-	\item \texttt{Set\_input(ID):} Sets the input object to the object with given ID.
+	\item \textbf{Kernel actors:} All actors created at the genesis block and during updates to the blockchain. These are actors that define the rules for how the runtime works and are unique actors, meaning that there is only one instance of each actor type.
+	\item \textbf{User actors:} All actors created by the users. There is a predetermined list of actor templates, from which users can create new user actors.
 \end{itemize}
 
-These functions can be used to arbitrarily change the state. The last function can change the input object of the state, i.e., the object that all inputs are initially fed into.
+The idea is that the entire application logic will be coded into the kernel actors, for example we may have one actor to handle the incoming extrinsics, another that implements some governance method, etc. While the user actors will be regular actors like accounts or smart contracts, effectively representing the application data.
 
-\subsection{Events queue}
-The events queue is just a simple priority queue for events. So, events are added to the queue and then events with a higher priority are processed before events with a lower priority. Events with the same priority are processed on a \textit{first in first out} basis.
+Second, an extrinsic is just a message that is sent by an user, or by some other external source, instead of by an actor. Otherwise, an extrinsic should be able to be processed by an actor just like a message.
 
-When an event is processed, it is taken out of the queue and the function, \texttt{function\_call}, of the object, \texttt{ID\_to}, is called with the input parameters, \texttt{parameters}. If, for some reason, the function cannot be called, for example if the object doesn't exist or there is no function with that name, the event is simply ignored.
-
-\subsection{Input rules}
-The input rules determine how extrinsics are fed into the Enso virtual machine and processed, thus resulting into a new state.
-
-First, there is always a single \textit{input object}, which is the object that is designated by the super object to receive extrinsics. Extrinsics in Enso are events just like any other, but with the caveat that they must have \texttt{ID\_to=input\_object\_ID}. Any object can be the input object, the only requirement is that it is designated as such by the super object.
-
-Second, a block is just an ordered list of extrinsics. When the virtual machine receives a new block, it just needs to process those extrinsics in order and in the end it will have reached a new state.
+Third, a block is just an ordered list of extrinsics. When the virtual machine receives a new block, it just needs to process those extrinsics in order and in the end it will have reached a new state.
 
 So, to process a new block, a node follows these rules:
 
 \begin{enumerate}
 	\item Receive an ordered list of extrinsics.
-	\item Add the first extrinsic to the event queue.
-	\item The resulting event will be sent to the input object. The input object then may create more events, that in turn will also be processed and create more events, and so forth, until no more events are created.
-	\item Add the next extrinsic to the event queue and keep repeating steps 3 and 4 until there are no more extrinsics.
-	\item When there are no more extrinsics, or events, to be processed, the virtual machine has reached a new state.
+	\item Add all the extrinsics, in order, to the global message queue.
+	\item Take the top message and send it to the corresponding actor.
+	\item The receiving actor then may create more messages, which will also be added to the queue.
+	\item Keep repeating steps 3 and 4 until there are no more messages left
+	\item When there are no more messages to be processed, the state transition has finished.
 \end{enumerate}
-
-\section{Implementation}
-The objective of the last section was to describe the components of the Enso virtual machine and its operation in an abstract form. In this section we want to give some details on how Enso can be implemented in practice.
-
-\subsection{Objects}
-The ID of an object is only required to be unique and it is desirable to have human-readable IDs. Therefore, the ID format can be defined by choosing some alphabet (ex: lower-case letters, upper-case letters and numbers) and some maximum length. An idea would be to use email address standards since the users are already familiar with these.
-
-The code of an object can, in theory, be written in any language as long as it supports function calls of some kind. In practice, we also want it to be fast to execute and easy to write. For these reasons, we believe the code for objects should be in WebAssembly, since its speed rivals that of native machine code and supports compilation from a variety of low-level languages like C, C++, and Rust, with more languages planned to be supported.
-
-The storage of an object does not need to be strongly defined because normally it will only be accessed by the code of the object itself. So, different objects can have different data structures as storage without any issues arising. The best option here then is to have the storage of an object be a binary blob, which is just a chunk of binary data.
-
-\subsection{Kernel}
-Even though both the application data and logic will coexist in the state, in most cases there will be a clear separation between both. By this we mean that, when developing a new blockchain with Enso, it is useful to divide the objects into two categories:
-
-\begin{itemize}
-	\item \textbf{Kernel objects:} All objects created at the genesis block and during updates to the blockchain. These are objects that define the rules for how the runtime works and are unique objects, meaning that there is only one instance of each object type.
-	\item \textbf{User objects:} All objects created by the users. There is a predetermined list of object templates, from which users can create new user objects.
-\end{itemize}
-
-The idea is that the entire application logic will be coded into the kernel objects, for example we may have one object to handle the incoming extrinsics, another that implements some governance method, etc. While the user objects will be regular objects like accounts or smart contracts, effectively representing the application data.
-
-\subsection{Substrate}
-Since Enso only aims to substitute the state transition function of most blockchains, there is no need to develop an entire blockchain around it. Instead, we intend to implement Enso as a runtime module for Parity's Substrate Core. Substrate Core has an \texttt{execute\_block} function that is general enough to support Enso.
 
 \section{Conclusion}
 This paper analyzes the organization of a blockchain's code by thinking of it as a distributed virtual machine. We then argue that a distributed virtual machine needs to act analogously to a stored-program computer, which implies that the application logic needs to be coded into the state and that the state transition function needs to be a general-purpose virtual machine. Using this method it is possible to have blockchains that are simpler and faster to develop and operate, and that require far fewer forks.
